@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+groq
+twilio
+gspread
+google-auth
+python-dotenv

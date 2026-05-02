@@ -9,10 +9,11 @@ def handle_message(user_phone, user_message):
         user_sessions[user_phone] = {
             "history": [],
             "lead": {
-                "phone": user_phone,
+                "phone": None,
                 "name": None,
                 "email": None
-            }
+            },
+            "collecting": False
         }
 
     session = user_sessions[user_phone]
@@ -23,7 +24,7 @@ def handle_message(user_phone, user_message):
         "content": user_message
     })
 
-    # Get AI response
+    # Get AI response FIRST
     ai_reply = get_ai_response(session["history"])
 
     # Save AI reply to history
@@ -32,17 +33,33 @@ def handle_message(user_phone, user_message):
         "content": ai_reply
     })
 
-    # Try to extract lead info from conversation
-    extract_lead_info(user_message, session["lead"])
+    # Start collecting ONLY after AI asks for name/email/phone
+    if any(word in ai_reply.lower() for word in ["full name", "email address", "phone number"]):
+        session["collecting"] = True
 
-    # Check if we have complete lead
+    # Extract lead info only when collecting is True
+    if session["collecting"]:
+        extract_lead_info(user_message, session["lead"])
+
+    # Check if lead is complete
     lead_complete = all([
         session["lead"]["name"],
         session["lead"]["email"],
         session["lead"]["phone"]
     ])
 
-    return ai_reply, session["lead"], lead_complete
+    if lead_complete:
+        saved_lead = session["lead"].copy()
+        # Reset for next lead
+        session["lead"] = {
+            "phone": user_phone.replace("whatsapp:", ""),
+            "name": None,
+            "email": None
+        }
+        session["collecting"] = False
+        return ai_reply, saved_lead, True
+
+    return ai_reply, session["lead"], False
 
 
 def extract_lead_info(message, lead):
@@ -60,10 +77,28 @@ def extract_lead_info(message, lead):
     if phone_match and not lead["phone"]:
         lead["phone"] = phone_match.group()
 
-    # Simple name detection (if message is short and has no special chars)
+    # Extract name
     if not lead["name"]:
-        message = message.strip()
-        if (len(message.split()) <= 4 and
-            message.replace(" ", "").isalpha() and
-            len(message) > 3):
-            lead["name"] = message.title()
+        # Handle "Manikandan,email,phone" comma format
+        parts = message.split(",")
+        if len(parts) >= 2:
+            first_part = parts[0].strip()
+            if first_part.replace(" ", "").isalpha() and len(first_part) > 2:
+                lead["name"] = first_part.title()
+                return
+
+        # Handle "my name is X" format
+        name_match = re.search(
+            r'(?:my name is|i am|name[:\s]+)\s*([A-Za-z ]{3,30})',
+            message.lower()
+        )
+        if name_match:
+            lead["name"] = name_match.group(1).strip().title()
+            return
+
+        # Handle short name only message like "Manikandan"
+        words = message.strip().split()
+        if (len(words) <= 3 and
+            message.strip().replace(" ", "").isalpha() and
+            len(message.strip()) > 2):
+            lead["name"] = message.strip().title()

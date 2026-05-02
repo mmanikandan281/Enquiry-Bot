@@ -23,6 +23,8 @@ Handle student queries, share course details, capture and follow up with leads �
 
 ## 🧠 How It Works
 
+![alt text](image.png)
+
 ```
 Student (WhatsApp)
        ↓
